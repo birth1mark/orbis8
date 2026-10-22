@@ -80,18 +80,10 @@ end
 function classic_init()
 	carts = {}
 	numcarts = 0
-	dirs = {}
-	numdirs = 0
-	currentdirname = ""
-
 	cidx = 0
-	didx = 0
-	mode = 0 -- 0 = carts, 1 = dirs
 	carttoload = ""
 	t = 0
-	linebuffer = ""
 	runcmd = false
-	cdcmd = false
 
 	-- BBS Online Store state
 	bbs_mode = false
@@ -109,27 +101,8 @@ function classic_init()
 		if numcarts > 0 then cidx = 1 end
 	end
 
-	if __listdirs then
-		dirs = __listdirs()
-		numdirs = #dirs
-	end
-
 	if __bbs_listfeatured then
 		bbs_items = __bbs_listfeatured()
-	end
-
-	if __pwd then
-		local fullpath = __pwd()
-		local lastslash = findlastchar(fullpath, "/")
-		if lastslash then
-			currentdirname = sub(fullpath, lastslash + 1)
-		else
-			currentdirname = fullpath
-		end
-	end
-
-	if __getbioserror then
-		linebuffer = __getbioserror()
 	end
 end
 
@@ -140,21 +113,8 @@ function classic_refreshlists()
 		if cidx > numcarts then cidx = numcarts end
 		if cidx == 0 and numcarts > 0 then cidx = 1 end
 	end
-	if __listdirs then
-		dirs = __listdirs()
-		numdirs = #dirs
-	end
 	if __bbs_listfeatured then
 		bbs_items = __bbs_listfeatured()
-	end
-	if __pwd then
-		local fullpath = __pwd()
-		local lastslash = findlastchar(fullpath, "/")
-		if lastslash then
-			currentdirname = sub(fullpath, lastslash + 1)
-		else
-			currentdirname = fullpath
-		end
 	end
 end
 
@@ -163,86 +123,38 @@ function classic_update()
 
 	if not bbs_mode then
 		-- LOCAL ARCADE LIBRARY MODE
+		-- Switch to BBS Store
 		if btnp(4) then
-			-- Switch to BBS Store
 			bbs_mode = true
 			classic_refreshlists()
 			bbs_status = ""
 			return
 		end
 
-		-- Left / Right: cycle carts (with wrap-around)
-		if btnp(0) then
-			mode = 0
+		-- Left (0) / Up (2): Previous Cartridge (with wrap-around)
+		if btnp(0) or btnp(2) then
 			if numcarts > 0 then
 				cidx -= 1
 				if cidx < 1 then cidx = numcarts end
 			end
 		end
-		if btnp(1) then
-			mode = 0
+
+		-- Right (1) / Down (3): Next Cartridge (with wrap-around)
+		if btnp(1) or btnp(3) then
 			if numcarts > 0 then
 				cidx += 1
 				if cidx > numcarts then cidx = 1 end
 			end
 		end
 
-		-- Up / Down: toggle between cart mode and dir navigation
-		if btnp(2) then
-			if mode == 0 then
-				mode = 1
-				didx = 0
-			else
-				didx = max(0, didx - 1)
-			end
-		end
-		if btnp(3) then
-			if mode == 1 then
-				didx = min(numdirs + 1, didx + 1)
-			else
-				mode = 1
-				didx = min(numdirs + 1, didx + 1)
-			end
-		end
-
-		-- Button 5 (Cross ✕): Run game or enter directory
+		-- Cross (5): Launch Game!
 		if btnp(5) then
-			linebuffer = ""
-			if mode == 0 then
-				if cidx > 0 and cidx <= numcarts then
-					carttoload = carts[cidx]
-					runcmd = true
-				end
-			else
-				cdcmd = true
-			end
-		end
-
-		if runcmd then
-			runcmd = false
-			if load and carttoload and carttoload ~= "" then
-				load(carttoload)
-			end
-		end
-
-		if cdcmd then
-			cdcmd = false
-			if didx == 0 then
-				-- pwd
-			elseif didx == 1 then
-				if __cd then
-					__cd("..")
-					classic_refreshlists()
-				end
-			else
-				local dirIdx = didx - 1
-				if dirIdx <= numdirs and __cd then
-					__cd(dirs[dirIdx])
-					classic_refreshlists()
+			if cidx > 0 and cidx <= numcarts then
+				local target = carts[cidx]
+				if load and target and target ~= "" then
+					load(target)
 				end
 			end
-			mode = 0
-			linebuffer = ""
 		end
 
 	elseif not bbs_custom_mode then
@@ -281,7 +193,7 @@ function classic_update()
 						local ok = __bbs_download(item.id, item.file)
 						if ok then
 							item.downloaded = true
-							bbs_status = "SAVED! PRESS ❎ TO PLAY"
+							bbs_status = "SAVED! PRESS [X] TO PLAY"
 							if __refreshcarts then __refreshcarts() end
 							classic_refreshlists()
 						else
@@ -349,6 +261,15 @@ function classic_update()
 			end
 		end
 	end
+end
+
+-- Draws a mathematically centered arcade button pill
+function draw_action_btn(x, y, btn_text, label_text, btn_col)
+	local bw = (#btn_text == 1) and 8 or 12
+	rectfill(x, y, x + bw, y + 8, btn_col)
+	rect(x, y, x + bw, y + 8, 7)
+	print(btn_text, x + 3, y + 2, (btn_col == 8) and 7 or 0)
+	print(label_text, x + bw + 4, y + 2, 7)
 end
 
 -- Renders an authentic physical PICO-8 cartridge card
@@ -434,92 +355,63 @@ function classic_draw()
 
 		-- TABS (HIGH CONTRAST)
 		-- Active Tab: LOCAL
-		rectfill(2, 13, 62, 22, 12)
-		rect(2, 13, 62, 22, 7)
-		print("* LOCAL *", 14, 15, 0)
+		rectfill(3, 13, 61, 22, 12)
+		rect(3, 13, 61, 22, 7)
+		print("LOCAL CARTS", 10, 15, 0)
 
 		-- Inactive Tab: BBS GET
-		rectfill(65, 13, 125, 22, 1)
-		rect(65, 13, 125, 22, 5)
-		print("  BBS GET", 76, 15, 6)
+		rectfill(66, 13, 124, 22, 1)
+		rect(66, 13, 124, 22, 5)
+		print("BBS STORE", 77, 15, 6)
 
 		-- PROMPT BANNER
-		print("PRESS [O] TO SWITCH TAB", 18, 25, 10)
+		print("PRESS [O] TO SWITCH", 24, 25, 10)
 
 		-- CENTER CARTRIDGE DISPLAY
 		local cur_cart_name = (cidx > 0 and cidx <= numcarts) and carts[cidx] or "(no carts)"
-		draw_cart_card(36, 34, cur_cart_name, mode == 0)
+		draw_cart_card(36, 33, cur_cart_name, true)
 
 		-- Animated Left / Right Arrows
-		if numcarts > 1 and mode == 0 then
+		if numcarts > 1 then
 			local lx = 16 + sin(t / 20) * 2
 			local rx = 108 - sin(t / 20) * 2
-			print("<", lx, 50, 12)
-			print(">", rx, 50, 12)
+			print("<", lx, 49, 12)
+			print(">", rx, 49, 12)
 		end
 
-		-- INFO & METADATA CARD
-		rectfill(6, 76, 121, 98, 0)
-		rect(6, 76, 121, 98, (mode == 0) and 1 or 12)
-		rect(7, 77, 120, 97, 5)
+		-- INFO & METADATA CARD (Y: 77 - 107)
+		rectfill(6, 77, 121, 107, 0)
+		rect(6, 77, 121, 107, 1)
+		rect(7, 78, 120, 106, 5)
 
-		if mode == 0 then
-			-- Cartridge Title
-			local disptitle = cur_cart_name
-			local lastslash = findlastchar(disptitle, "/")
-			if lastslash then disptitle = sub(disptitle, lastslash + 1) end
-			disptitle = sub(disptitle, 1, 18)
-			local tx = 64 - (#disptitle * 2)
-			print(disptitle, tx + 1, 80, 0)
-			print(disptitle, tx, 79, 7)
+		-- Cartridge Title
+		local disptitle = cur_cart_name
+		local lastslash = findlastchar(disptitle, "/")
+		if lastslash then disptitle = sub(disptitle, lastslash + 1) end
+		disptitle = sub(disptitle, 1, 18)
+		local tx = 64 - (#disptitle * 2)
+		print(disptitle, tx + 1, 82, 0)
+		print(disptitle, tx, 81, 7)
 
-			-- Badge 1: Counter Pill
-			local countstr = tostr(cidx) .. " / " .. tostr(numcarts)
-			rectfill(12, 88, 52, 95, 1)
-			print(countstr, 32 - (#countstr * 2), 89, 10)
+		-- Badge 1: Counter Pill
+		local countstr = tostr(cidx) .. " / " .. tostr(numcarts)
+		rectfill(12, 93, 52, 101, 1)
+		rect(12, 93, 52, 101, 5)
+		print(countstr, 32 - (#countstr * 2), 95, 10)
 
-			-- Badge 2: Type Pill
-			local is_png = (sub(cur_cart_name, -4) == ".png")
-			local typestr = is_png and "PNG-CART" or "P8-SRC"
-			rectfill(74, 88, 115, 95, 1)
-			print(typestr, 94 - (#typestr * 2), 89, 11)
-		else
-			-- Directory browser mode
-			print("DIRECTORY BROWSER", 26, 79, 10)
-			if didx == 0 then
-				print("PWD: " .. sub(currentdirname, 1, 15), 12, 88, 7)
-			elseif didx == 1 then
-				print(".. [PARENT DIR]", 12, 88, 11)
-			else
-				local dname = dirs[didx - 1] or ""
-				print(sub(dname, 1, 16), 12, 88, 12)
-			end
-		end
+		-- Badge 2: Type Pill
+		local is_png = (sub(cur_cart_name, -4) == ".png")
+		local typestr = is_png and "PNG-CART" or "P8-SRC"
+		rectfill(72, 93, 115, 101, 1)
+		rect(72, 93, 115, 101, 5)
+		print(typestr, 94 - (#typestr * 2), 95, 11)
 
-		-- Directory location breadcrumb
-		print("DIR: " .. sub(currentdirname, 1, 15), 10, 102, 6)
-
-		-- BOTTOM ACTION / LEGEND BAR (ULTRA LEGIBLE)
+		-- BOTTOM ACTION / LEGEND BAR (MATHEMATICALLY CENTERED)
 		rectfill(0, 113, 127, 127, 1)
 		line(0, 112, 127, 112, 12)
-
-		-- [X] PLAY
-		rectfill(2, 115, 12, 124, 11)
-		rect(2, 115, 12, 124, 7)
-		print("X", 5, 117, 0)
-		print("PLAY", 15, 117, 7)
-
-		-- [O] BBS
-		rectfill(42, 115, 52, 124, 8)
-		rect(42, 115, 52, 124, 7)
-		print("O", 45, 117, 7)
-		print("BBS", 55, 117, 7)
-
-		-- [<>] MOVE
-		rectfill(80, 115, 94, 124, 10)
-		rect(80, 115, 94, 124, 7)
-		print("<>", 82, 117, 0)
-		print("MOVE", 97, 117, 7)
+		draw_action_btn(4, 116, "x", "PLAY", 11)
+		draw_action_btn(44, 116, "o", "BBS", 8)
+		draw_action_btn(80, 116, "<>", "MOVE", 10)
 
 	elseif not bbs_custom_mode then
 		-- BBS STORE VIEW
@@ -532,17 +424,17 @@ function classic_draw()
 
 		-- TABS (HIGH CONTRAST)
 		-- Inactive Tab: LOCAL
-		rectfill(2, 13, 62, 22, 1)
-		rect(2, 13, 62, 22, 5)
-		print("  LOCAL", 16, 15, 6)
+		rectfill(3, 13, 61, 22, 1)
+		rect(3, 13, 61, 22, 5)
+		print("LOCAL CARTS", 10, 15, 6)
 
 		-- Active Tab: BBS GET
-		rectfill(65, 13, 125, 22, 11)
-		rect(65, 13, 125, 22, 7)
-		print("* BBS GET *", 68, 15, 0)
+		rectfill(66, 13, 124, 22, 11)
+		rect(66, 13, 124, 22, 7)
+		print("BBS STORE", 77, 15, 0)
 
 		-- PROMPT BANNER
-		print("PRESS [O] TO SWITCH TAB", 18, 25, 10)
+		print("PRESS [O] TO SWITCH", 24, 25, 10)
 
 		-- CRT CATALOG FRAME
 		rectfill(6, 30, 121, 82, 0)
@@ -569,7 +461,7 @@ function classic_draw()
 					print(sub(item.title, 1, 13), 17, y + 1, 6)
 				end
 
-				-- Status Badge Pill (Clear high-contrast text)
+				-- Status Badge Pill
 				if item.downloaded then
 					rectfill(86, y, 115, y + 7, 11)
 					print("PLAY", 92, y + 1, 0)
@@ -612,27 +504,12 @@ function classic_draw()
 			print("PRESS [X] TO OPEN KEYPAD", 16, 103, 12)
 		end
 
-		-- BOTTOM BAR (ULTRA LEGIBLE)
+		-- BOTTOM BAR (MATHEMATICALLY CENTERED)
 		rectfill(0, 113, 127, 127, 1)
 		line(0, 112, 127, 112, 11)
-
-		-- [X] GET
-		rectfill(2, 115, 12, 124, 11)
-		rect(2, 115, 12, 124, 7)
-		print("X", 5, 117, 0)
-		print("GET", 15, 117, 7)
-
-		-- [O] BACK
-		rectfill(42, 115, 52, 124, 8)
-		rect(42, 115, 52, 124, 7)
-		print("O", 45, 117, 7)
-		print("BACK", 55, 117, 7)
-
-		-- [^v] MOVE
-		rectfill(80, 115, 94, 124, 10)
-		rect(80, 115, 94, 124, 7)
-		print("^v", 82, 117, 0)
-		print("MOVE", 97, 117, 7)
+		draw_action_btn(4, 116, "x", "GET", 11)
+		draw_action_btn(44, 116, "o", "BACK", 8)
+		draw_action_btn(84, 116, "^v", "MOVE", 10)
 
 	else
 		-- CUSTOM ID ENTRY VIEW
@@ -683,10 +560,7 @@ function classic_draw()
 		-- BOTTOM BAR
 		rectfill(0, 113, 127, 127, 1)
 		line(0, 112, 127, 112, 1)
-		rectfill(42, 115, 52, 124, 8)
-		rect(42, 115, 52, 124, 7)
-		print("O", 45, 117, 7)
-		print("CANCEL", 55, 117, 7)
+		draw_action_btn(44, 116, "o", "CANCEL", 8)
 	end
 end
 

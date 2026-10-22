@@ -43,6 +43,25 @@ end
 
 charset = "0123456789abcdefghijklmnopqrstuvwxyz_-"
 
+stars = {}
+for i = 1, 28 do
+	stars[i] = {
+		x = (i * 17 + 23) % 128,
+		y = (i * 29 + 11) % 128,
+		c = (i % 3 == 0) and 7 or ((i % 2 == 0) and 6 or 5)
+	}
+end
+
+function draw_stars()
+	for i = 1, #stars do
+		local s = stars[i]
+		local tw = (t + i * 5) % 36
+		local col = s.c
+		if tw < 4 then col = 10 end
+		pset(s.x, s.y, col)
+	end
+end
+
 function get_char_idx(c)
 	for i = 1, #charset do
 		if sub(charset, i, i) == c then return i end
@@ -65,22 +84,12 @@ function classic_init()
 	numdirs = 0
 	currentdirname = ""
 
-	if __getsetting then
-		pal(1, __getsetting('p8_bgcolor'))
-		pal(7, __getsetting('p8_textcolor'))
-	else
-		carts = {'cart1.p8', 'cart2.p8.png', 'thirdcart.p8'}
-		numcarts = 3
-	end
-
 	cidx = 0
 	didx = 0
-	mode = 0
+	mode = 0 -- 0 = carts, 1 = dirs
 	carttoload = ""
 	t = 0
 	linebuffer = ""
-
-	bgcolor = 1
 	runcmd = false
 	cdcmd = false
 
@@ -97,6 +106,7 @@ function classic_init()
 	if __listcarts then
 		carts = __listcarts()
 		numcarts = #carts
+		if numcarts > 0 then cidx = 1 end
 	end
 
 	if __listdirs then
@@ -127,6 +137,8 @@ function classic_refreshlists()
 	if __listcarts then
 		carts = __listcarts()
 		numcarts = #carts
+		if cidx > numcarts then cidx = numcarts end
+		if cidx == 0 and numcarts > 0 then cidx = 1 end
 	end
 	if __listdirs then
 		dirs = __listdirs()
@@ -144,8 +156,6 @@ function classic_refreshlists()
 			currentdirname = fullpath
 		end
 	end
-	cidx = 0
-	didx = 0
 end
 
 function classic_update()
@@ -161,65 +171,50 @@ function classic_update()
 			return
 		end
 
-		-- left/right: navigate carts
-		if btnp(1) then
-			mode = 0
-			cidx = min((cidx + 1), numcarts)
-		end
+		-- Left / Right: cycle carts (with wrap-around)
 		if btnp(0) then
 			mode = 0
-			cidx = max((cidx - 1), 1)
+			if numcarts > 0 then
+				cidx -= 1
+				if cidx < 1 then cidx = numcarts end
+			end
+		end
+		if btnp(1) then
+			mode = 0
+			if numcarts > 0 then
+				cidx += 1
+				if cidx > numcarts then cidx = 1 end
+			end
 		end
 
-		-- up/down: navigate directories
+		-- Up / Down: toggle between cart mode and dir navigation
 		if btnp(2) then
-			mode = 1
-			didx = max((didx - 1), 0)
+			if mode == 0 then
+				mode = 1
+				didx = 0
+			else
+				didx = max(0, didx - 1)
+			end
 		end
 		if btnp(3) then
-			mode = 1
-			didx = min((didx + 1), numdirs + 1)
+			if mode == 1 then
+				didx = min(numdirs + 1, didx + 1)
+			else
+				mode = 1
+				didx = min(numdirs + 1, didx + 1)
+			end
 		end
 
+		-- Button 5 (Cross ✕): Run game or enter directory
 		if btnp(5) then
 			linebuffer = ""
 			if mode == 0 then
-				runcmd = true
+				if cidx > 0 and cidx <= numcarts then
+					carttoload = carts[cidx]
+					runcmd = true
+				end
 			else
 				cdcmd = true
-			end
-		end
-
-		-- update linebuffer based on mode
-		if mode == 0 then
-			if cidx > 0 and cidx <= numcarts then
-				carttoload = carts[cidx]
-				local lastslashidx = findlastchar(carttoload, "/")
-				local dispstr = carttoload
-				if lastslashidx ~= nil and lastslashidx > 0 then
-					dispstr = sub(dispstr, lastslashidx + 1)
-				end
-				linebuffer = "load " .. dispstr
-			else
-				carttoload = ""
-				if numcarts < 1 then
-					linebuffer = "(no carts in directory)"
-				end
-			end
-		else
-			if didx == 0 then
-				if __pwd then
-					linebuffer = "pwd: " .. __pwd()
-				else
-					linebuffer = "pwd"
-				end
-			elseif didx == 1 then
-				linebuffer = "cd .."
-			else
-				local dirIdx = didx - 1
-				if dirIdx <= numdirs then
-					linebuffer = "cd " .. dirs[dirIdx]
-				end
 			end
 		end
 
@@ -253,7 +248,7 @@ function classic_update()
 	elseif not bbs_custom_mode then
 		-- BBS STORE BROWSER MODE
 		if btnp(4) then
-			-- Back to local library
+			-- Back to local arcade
 			bbs_mode = false
 			classic_refreshlists()
 			return
@@ -286,11 +281,11 @@ function classic_update()
 						local ok = __bbs_download(item.id, item.file)
 						if ok then
 							item.downloaded = true
-							bbs_status = "READY! PRESS X TO PLAY"
+							bbs_status = "SAVED! PRESS ❎ TO PLAY"
 							if __refreshcarts then __refreshcarts() end
 							classic_refreshlists()
 						else
-							bbs_status = "DOWNLOAD FAILED"
+							bbs_status = "ERROR: BBS GET FAILED"
 						end
 					end
 				end
@@ -356,182 +351,314 @@ function classic_update()
 	end
 end
 
+-- Renders an authentic physical PICO-8 cartridge card
+function draw_cart_card(cx, cy, filename, is_selected)
+	-- Drop shadow
+	rectfill(cx + 2, cy + 2, cx + 63, cy + 43, 0)
+
+	-- Plastic body (graphite 5)
+	rectfill(cx, cy, cx + 61, cy + 41, 5)
+	-- 3D Bevel
+	line(cx + 1, cy, cx + 60, cy, 6)
+	line(cx, cy + 1, cx, cy + 40, 6)
+	line(cx + 1, cy + 41, cx + 61, cy + 41, 0)
+	line(cx + 61, cy + 1, cx + 61, cy + 40, 0)
+
+	-- Top grip ridges
+	for r = 0, 4 do
+		line(cx + 14 + r * 7, cy + 2, cx + 18 + r * 7, cy + 2, 0)
+		line(cx + 14 + r * 7, cy + 3, cx + 18 + r * 7, cy + 3, 6)
+	end
+
+	-- Label sticker
+	rectfill(cx + 6, cy + 7, cx + 55, cy + 36, 7)
+	rect(cx + 5, cy + 6, cx + 56, cy + 37, 1)
+
+	-- Iconic PICO-8 rainbow stripe across sticker top
+	line(cx + 6, cy + 7, cx + 55, cy + 7, 8)
+	line(cx + 6, cy + 8, cx + 55, cy + 8, 9)
+	line(cx + 6, cy + 9, cx + 55, cy + 9, 10)
+	line(cx + 6, cy + 10, cx + 55, cy + 10, 11)
+	line(cx + 6, cy + 11, cx + 55, cy + 11, 12)
+
+	-- Title on the sticker
+	local cleanname = filename
+	local lastslash = findlastchar(cleanname, "/")
+	if lastslash then cleanname = sub(cleanname, lastslash + 1) end
+	local lastdot = 0
+	for d = 1, #cleanname do
+		if sub(cleanname, d, d) == "." then lastdot = d break end
+	end
+	if lastdot > 0 then cleanname = sub(cleanname, 1, lastdot - 1) end
+	cleanname = sub(cleanname, 1, 11)
+	print(cleanname, cx + 31 - (#cleanname * 2), cy + 18, 0)
+
+	-- Fantasy console branding
+	print("PICO-8", cx + 18, cy + 28, 5)
+
+	-- Bottom gold connector contacts
+	rectfill(cx + 12, cy + 42, cx + 49, cy + 43, 0)
+	for p = 0, 7 do
+		pset(cx + 14 + p * 4, cy + 42, 10)
+		pset(cx + 15 + p * 4, cy + 42, 9)
+	end
+
+	-- Animated pulsing targeting corners when selected
+	if is_selected then
+		local pc = (t % 20 < 10) and 10 or 7
+		line(cx - 3, cy - 3, cx + 1, cy - 3, pc)
+		line(cx - 3, cy - 3, cx - 3, cy + 1, pc)
+		line(cx + 64, cy - 3, cx + 60, cy - 3, pc)
+		line(cx + 64, cy - 3, cx + 64, cy + 1, pc)
+		line(cx - 3, cy + 44, cx + 1, cy + 44, pc)
+		line(cx - 3, cy + 44, cx - 3, cy + 40, pc)
+		line(cx + 64, cy + 44, cx + 60, cy + 44, pc)
+		line(cx + 64, cy + 44, cx + 64, cy + 40, pc)
+	end
+end
+
 function classic_draw()
-	cls()
-	rectfill(0, 0, 128, 128, bgcolor)
+	cls(0)
+	draw_stars()
 
 	if not bbs_mode then
-		-- Header
-		color(12)
-		print("=== orbis8 arcade ===", 18, 2)
-		color(11)
-		print("by birth1mark", 36, 10)
-		color(5)
-		line(0, 18, 128, 18)
+		-- ARCADE HEADER
+		rectfill(0, 0, 127, 16, 1)
+		line(0, 16, 127, 16, 12)
+		line(0, 17, 127, 17, 1)
 
-		-- Navigation Tabs
-		rectfill(0, 20, 60, 28, 12)
-		color(7)
-		print("📁 local", 10, 22)
-		rectfill(64, 20, 127, 28, 0)
-		color(6)
-		print("🌐 bbs get", 72, 22)
+		-- Animated Mini Cassette Icon
+		rectfill(4, 3, 16, 12, 5)
+		rect(4, 3, 16, 12, 6)
+		circfill(7, 7, 1, 7)
+		circfill(13, 7, 1, 7)
 
-		-- Info & Controls
-		color(7)
-		print("dir: " .. currentdirname, 0, 32)
-		color(10)
-		print("o: open bbs store (get)", 0, 40)
-		color(6)
-		print("x: play   d-pad: navigate", 0, 48)
-		color(7)
-		print("⬅️➡️ load carts (" .. numcarts .. ")", 0, 56)
-		print("⬆️⬇️ cd dirs (" .. numdirs .. ")", 0, 64)
-		print(exitbtn .. " to exit", 0, 72)
+		-- Glowing Logo with Drop Shadow
+		print("ORBIS-8", 22, 3, 0)
+		print("ORBIS-8", 21, 2, 12)
+		print("ARCADE SYSTEM", 22, 9, 6)
 
-		linenum = 84
-		rectfill(0, linenum, 128, linenum + 5, bgcolor)
-		color(7)
-		print("> " .. linebuffer, 0, linenum)
-		if t % 30 < 15 then
-			rectfill((#linebuffer + 2) * 4, linenum, (#linebuffer + 2) * 4 + 3, linenum + 4, 8)
+		-- Power Indicator LED
+		local led_col = (t % 40 < 20) and 11 or 3
+		circfill(120, 7, 2, led_col)
+		pset(120, 7, 7)
+
+		-- TABS
+		rectfill(4, 19, 58, 27, 12)
+		print("📁 LOCAL", 14, 21, 0)
+		rectfill(62, 19, 123, 27, 0)
+		print("🌐 BBS GET", 70, 21, 5)
+
+		-- CENTER CARTRIDGE DISPLAY
+		local cur_cart_name = (cidx > 0 and cidx <= numcarts) and carts[cidx] or "(no carts)"
+		draw_cart_card(33, 30, cur_cart_name, mode == 0)
+
+		-- Animated Left / Right Arrows
+		if numcarts > 1 and mode == 0 then
+			local lx = 14 + sin(t / 25) * 2
+			local rx = 108 - sin(t / 25) * 2
+			print("◄", lx, 48, 12)
+			print("►", rx, 48, 12)
 		end
+
+		-- INFO & METADATA CARD
+		rectfill(8, 77, 119, 99, 0)
+		rect(8, 77, 119, 99, (mode == 0) and 1 or 12)
+		rect(9, 78, 118, 98, 5)
+
+		if mode == 0 then
+			-- Cartridge Title
+			local disptitle = cur_cart_name
+			local lastslash = findlastchar(disptitle, "/")
+			if lastslash then disptitle = sub(disptitle, lastslash + 1) end
+			disptitle = sub(disptitle, 1, 18)
+			local tx = 64 - (#disptitle * 2)
+			print(disptitle, tx + 1, 81, 0)
+			print(disptitle, tx, 80, 7)
+
+			-- Badge 1: Counter Pill
+			local countstr = tostr(cidx) .. " / " .. tostr(numcarts)
+			rectfill(12, 89, 52, 96, 1)
+			print(countstr, 32 - (#countstr * 2), 90, 10)
+
+			-- Badge 2: Type Pill
+			local is_png = (sub(cur_cart_name, -4) == ".png")
+			local typestr = is_png and "PNG-CART" or "P8-SRC"
+			rectfill(74, 89, 115, 96, 1)
+			print(typestr, 94 - (#typestr * 2), 90, 11)
+		else
+			-- Directory browser mode
+			print("DIRECTORY BROWSER", 26, 80, 10)
+			if didx == 0 then
+				print("PWD: " .. sub(currentdirname, 1, 15), 12, 89, 7)
+			elseif didx == 1 then
+				print("📁 .. [PARENT DIR]", 12, 89, 11)
+			else
+				local dname = dirs[didx - 1] or ""
+				print("📁 " .. sub(dname, 1, 16), 12, 89, 12)
+			end
+		end
+
+		-- BOTTOM ACTION / LEGEND BAR
+		rectfill(0, 115, 127, 127, 0)
+		line(0, 114, 127, 114, 1)
+		print("❎", 4, 118, 11)
+		print("PLAY", 12, 119, 7)
+		print("🅾", 46, 118, 8)
+		print("BBS", 54, 119, 7)
+		print("⬆️⬇️", 84, 118, 10)
+		print("DIR", 98, 119, 7)
 
 	elseif not bbs_custom_mode then
 		-- BBS STORE VIEW
-		color(11)
-		print("=== orbis8 bbs store ===", 10, 2)
-		color(7)
-		print("download community games", 14, 10)
-		color(5)
-		line(0, 18, 128, 18)
+		rectfill(0, 0, 127, 16, 1)
+		line(0, 16, 127, 16, 11)
+		line(0, 17, 127, 17, 1)
 
-		-- Navigation Tabs
-		rectfill(0, 20, 60, 28, 0)
-		color(6)
-		print("📁 local", 10, 22)
-		rectfill(64, 20, 127, 28, 11)
-		color(0)
-		print("🌐 bbs get", 72, 22)
+		print("ORBIS-8 BBS STORE", 19, 2, 0)
+		print("ORBIS-8 BBS STORE", 18, 1, 11)
+		print("COMMUNITY CARTRIDGE BROWSER", 10, 9, 6)
 
-		-- Cartridge List Window
-		local start_y = 31
-		local max_visible = 5
+		-- TABS
+		rectfill(4, 19, 58, 27, 0)
+		print("📁 LOCAL", 14, 21, 5)
+		rectfill(62, 19, 123, 27, 11)
+		print("🌐 BBS GET", 70, 21, 0)
+
+		-- CRT CATALOG FRAME
+		rectfill(6, 29, 121, 84, 0)
+		rect(6, 29, 121, 84, 1)
+
+		-- Scrollbar Track
+		line(119, 31, 119, 82, 1)
 		local total_items = #bbs_items + 1
+		local bar_h = 10
+		local bar_y = 31 + ((bbs_idx - 1) / total_items) * (51 - bar_h)
+		rectfill(118, bar_y, 120, bar_y + bar_h, 6)
 
-		for i = 1, max_visible do
+		for i = 1, 5 do
 			local cur = bbs_scroll + i
+			local y = 31 + (i - 1) * 10
 			if cur <= #bbs_items then
 				local item = bbs_items[cur]
-				local y = start_y + (i - 1) * 9
 				if cur == bbs_idx then
-					rectfill(0, y - 1, 127, y + 7, 1)
-					color(10)
-					print(">", 1, y)
-					color(7)
+					rectfill(8, y - 1, 116, y + 8, 1)
+					rect(8, y - 1, 116, y + 8, 12)
+					local ax = 10 + (t % 16 < 8 and 1 or 0)
+					print("▶", ax, y + 1, 10)
+					print(sub(item.title, 1, 13), 18, y + 1, 7)
 				else
-					color(6)
+					print(sub(item.title, 1, 13), 18, y + 1, 6)
 				end
-				print(sub(item.title, 1, 14), 8, y)
 
+				-- Status Badge Pill
 				if item.downloaded then
-					color(11)
-					print("[play]", 96, y)
+					rectfill(88, y, 114, y + 7, 3)
+					print("PLAY", 93, y + 1, 11)
 				else
-					color(9)
-					print("[get]", 100, y)
+					rectfill(88, y, 114, y + 7, 1)
+					print("GET", 96, y + 1, 12)
 				end
 			elseif cur == total_items then
-				local y = start_y + (i - 1) * 9
 				if cur == bbs_idx then
-					rectfill(0, y - 1, 127, y + 7, 1)
-					color(10)
-					print(">", 1, y)
-					color(12)
+					rectfill(8, y - 1, 116, y + 8, 1)
+					rect(8, y - 1, 116, y + 8, 10)
+					print("▶", 10, y + 1, 10)
+					print("[+ ENTER CART ID]", 18, y + 1, 10)
 				else
-					color(5)
+					print("[+ ENTER CART ID]", 18, y + 1, 5)
 				end
-				print("[+ enter cart id...]", 8, y)
 			end
 		end
 
-		-- Divider
-		color(5)
-		line(0, 78, 128, 78)
+		-- DETAILS PANEL
+		rectfill(6, 86, 121, 113, 0)
+		rect(6, 86, 121, 113, 1)
 
-		-- Item Details
 		if bbs_idx <= #bbs_items then
 			local item = bbs_items[bbs_idx]
-			color(6)
-			print("by " .. sub(item.author, 1, 12) .. " (" .. item.cat .. ")", 2, 81)
-			if item.downloaded then
+			print("BY " .. sub(item.author, 1, 12) .. " (" .. item.cat .. ")", 10, 89, 7)
+			if bbs_status ~= "" then
+				rectfill(8, 98, 119, 108, 8)
+				local st_x = 64 - (#bbs_status * 2)
+				print(bbs_status, st_x, 100, 7)
+			elseif item.downloaded then
 				color(11)
-				print("status: installed (x: play)", 2, 89)
+				print("● INSTALLED - PRESS ❎ TO PLAY", 10, 100)
 			else
-				color(9)
-				print("status: online (x: get)", 2, 89)
+				color(12)
+				print("○ AVAILABLE - PRESS ❎ TO GET", 10, 100)
 			end
 		else
-			color(12)
-			print("download any cart by bbs id", 2, 81)
-			color(6)
-			print("press x to enter id", 2, 89)
+			print("LEXALOFFLE BBS DOWNLOADER", 10, 89, 10)
+			print("PRESS ❎ TO INPUT POST ID", 10, 100, 12)
 		end
 
-		if bbs_status ~= "" then
-			rectfill(0, 97, 127, 107, 0)
-			color(10)
-			print(bbs_status, 2, 99)
-		end
-
-		-- Footer
-		color(5)
-		line(0, 117, 128, 117)
-		color(7)
-		print("x:select   o:back to arcade", 4, 120)
+		-- BOTTOM BAR
+		rectfill(0, 116, 127, 127, 0)
+		line(0, 115, 127, 115, 1)
+		print("❎", 4, 119, 11)
+		print("ACTION", 12, 120, 7)
+		print("🅾", 48, 119, 8)
+		print("ARCADE", 56, 120, 7)
+		print("⬆️⬇️", 90, 119, 10)
+		print("MOVE", 104, 120, 7)
 
 	else
 		-- CUSTOM ID ENTRY VIEW
+		rectfill(0, 0, 127, 16, 1)
+		line(0, 16, 127, 16, 10)
+		line(0, 17, 127, 17, 1)
+
+		print("BBS ID KEYPAD", 36, 2, 0)
+		print("BBS ID KEYPAD", 35, 1, 10)
+		print("ENTER LEXALOFFLE POST ID", 14, 9, 6)
+
+		-- Input Box Frame
+		rectfill(8, 30, 119, 64, 0)
+		rect(8, 30, 119, 64, 3)
+		rect(9, 31, 118, 63, 1)
+
+		-- Monospace Character Display
 		color(11)
-		print("=== enter cart id ===", 16, 4)
-		color(6)
-		print("from lexaloffle bbs", 22, 13)
-		color(5)
-		line(0, 22, 128, 22)
+		print("ID: " .. bbs_custom_id, 14, 44)
 
-		color(7)
-		print("cart id / lid:", 10, 32)
-
-		-- Box for ID
-		rectfill(8, 42, 119, 56, 0)
-		rect(8, 42, 119, 56, 6)
-		color(10)
-		print(bbs_custom_id, 14, 46)
-
-		-- Underline active character
+		-- Animated Flashing Cursor Caret
 		if t % 30 < 15 then
-			local cx = 14 + (bbs_custom_pos - 1) * 4
-			line(cx, 53, cx + 3, 53, 7)
+			local cx = 30 + (bbs_custom_pos - 1) * 4
+			line(cx, 51, cx + 3, 51, 10)
 		end
 
-		color(6)
-		print("⬆️⬇️: change character", 10, 64)
-		print("⬅️➡️: move cursor / add", 10, 72)
-		color(10)
-		print("x: download & play", 10, 84)
-		color(8)
-		print("o: cancel", 10, 92)
+		-- Character Roller Wheel (shows previous and next character)
+		local cur_char = sub(bbs_custom_id, bbs_custom_pos, bbs_custom_pos)
+		local idx = get_char_idx(cur_char)
+		local prev_idx = idx - 1
+		if prev_idx < 1 then prev_idx = #charset end
+		local next_idx = (idx % #charset) + 1
+
+		print(sub(charset, prev_idx, prev_idx), 108, 36, 5)
+		rect(106, 42, 114, 50, 10)
+		print(cur_char, 108, 44, 10)
+		print(sub(charset, next_idx, next_idx), 108, 52, 5)
+
+		-- Legend / Instructions Card
+		rectfill(8, 68, 119, 112, 0)
+		rect(8, 68, 119, 112, 1)
+		print("⬆️⬇️: CYCLE CHARACTERS", 12, 72, 7)
+		print("⬅️➡️: MOVE CURSOR / EXTEND", 12, 80, 7)
+		print("❎  : DOWNLOAD & LAUNCH", 12, 90, 11)
+		print("🅾  : CANCEL / BACK", 12, 98, 8)
 
 		if bbs_status ~= "" then
-			rectfill(0, 104, 127, 114, 0)
-			color(9)
-			print(bbs_status, 4, 106)
+			rectfill(8, 103, 119, 111, 8)
+			local st_x = 64 - (#bbs_status * 2)
+			print(bbs_status, st_x, 104, 7)
 		end
 
-		color(5)
-		line(0, 118, 128, 118)
-		color(7)
-		print("o: return to bbs store", 12, 121)
+		-- BOTTOM BAR
+		rectfill(0, 116, 127, 127, 0)
+		line(0, 115, 127, 115, 1)
+		print("🅾 CANCEL", 44, 120, 8)
 	end
 end
 

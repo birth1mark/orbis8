@@ -51,6 +51,10 @@ bool _initializeLuaState(lua_State* luaState) {
     lua_register(luaState, "__listdirs", listdirs);
     lua_register(luaState, "__cd", cd);
     lua_register(luaState, "__pwd", pwd);
+    lua_register(luaState, "__refreshcarts", refreshcarts);
+    lua_register(luaState, "__bbs_listfeatured", bbs_listfeatured);
+    lua_register(luaState, "__bbs_download", bbs_download);
+    lua_register(luaState, "__bbs_isdownloaded", bbs_isdownloaded);
     lua_register(luaState, "__getbioserror", getbioserror);
     lua_register(luaState, "__loaddefaultcart", loaddefaultcart);
     lua_register(luaState, "__loadsettingscart", loadsettingscart);
@@ -855,6 +859,31 @@ string Vm::GetCurrentDirectory(){
 
 string Vm::GetBiosError() {
     return _cartLoadError;
+}
+
+bool Vm::DownloadBBSCart(string lid, string filename) {
+    if (!_host) return false;
+    bool ok = BBSClient::DownloadCartByLid(lid, filename, _host->getCartDirectory());
+    if (ok) {
+        SetCartList(_host->listcarts());
+    }
+    return ok;
+}
+
+bool Vm::IsBBSCartDownloaded(string filename) {
+    if (!_host) return false;
+    return BBSClient::IsCartDownloaded(filename, _host->getCartDirectory());
+}
+
+vector<BBSCartItem> Vm::GetBBSFeaturedCarts() {
+    if (!_host) return {};
+    return BBSClient::GetFeaturedCarts(_host->getCartDirectory());
+}
+
+void Vm::RefreshCartList() {
+    if (_host) {
+        SetCartList(_host->listcarts());
+    }
 }
 
 void Vm::GameLoop() {

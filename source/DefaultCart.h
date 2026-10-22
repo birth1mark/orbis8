@@ -41,45 +41,73 @@ end
 -->8
 --classic
 
-function classic_init()
+charset = "0123456789abcdefghijklmnopqrstuvwxyz_-"
 
-	carts={}
+function get_char_idx(c)
+	for i = 1, #charset do
+		if sub(charset, i, i) == c then return i end
+	end
+	return 1
+end
+
+function replace_char_at(str, pos, newchar)
+	local pre = ""
+	local post = ""
+	if pos > 1 then pre = sub(str, 1, pos - 1) end
+	if pos < #str then post = sub(str, pos + 1) end
+	return pre .. newchar .. post
+end
+
+function classic_init()
+	carts = {}
 	numcarts = 0
-	dirs={}
+	dirs = {}
 	numdirs = 0
 	currentdirname = ""
-	
+
 	if __getsetting then
-			pal(1, __getsetting('p8_bgcolor'))
-			pal(7, __getsetting('p8_textcolor'))
+		pal(1, __getsetting('p8_bgcolor'))
+		pal(7, __getsetting('p8_textcolor'))
 	else
-		carts = {'cart1.p8','cart2.p8.png','thirdcart.p8'}
+		carts = {'cart1.p8', 'cart2.p8.png', 'thirdcart.p8'}
 		numcarts = 3
 	end
-	
-	
-	cidx=0  -- cart index (left/right)
-	didx=0  -- dir index (up/down): 0=pwd, 1=cd .., 2+=dirs
-	mode=0  -- 0=cart mode, 1=dir mode
+
+	cidx = 0
+	didx = 0
+	mode = 0
 	carttoload = ""
-	t=0
-	linebuffer=""
-	
-	bgcolor=1
-	runcmd=false
-	cdcmd=false
+	t = 0
+	linebuffer = ""
+
+	bgcolor = 1
+	runcmd = false
+	cdcmd = false
+
+	-- BBS Online Store state
+	bbs_mode = false
+	bbs_items = {}
+	bbs_idx = 1
+	bbs_scroll = 0
+	bbs_status = ""
+	bbs_custom_mode = false
+	bbs_custom_id = "11925"
+	bbs_custom_pos = 1
 
 	if __listcarts then
 		carts = __listcarts()
 		numcarts = #carts
 	end
-	
+
 	if __listdirs then
 		dirs = __listdirs()
 		numdirs = #dirs
 	end
-	
-	-- get current directory name (just the last component)
+
+	if __bbs_listfeatured then
+		bbs_items = __bbs_listfeatured()
+	end
+
 	if __pwd then
 		local fullpath = __pwd()
 		local lastslash = findlastchar(fullpath, "/")
@@ -104,7 +132,9 @@ function classic_refreshlists()
 		dirs = __listdirs()
 		numdirs = #dirs
 	end
-	-- refresh current directory name
+	if __bbs_listfeatured then
+		bbs_items = __bbs_listfeatured()
+	end
 	if __pwd then
 		local fullpath = __pwd()
 		local lastslash = findlastchar(fullpath, "/")
@@ -119,136 +149,389 @@ function classic_refreshlists()
 end
 
 function classic_update()
-	t+=1
-	
-	-- left/right: navigate carts
-	if btnp(1) then
-		mode = 0
-		cidx = min((cidx + 1), numcarts)
-	end
-	if btnp(0) then
-		mode = 0
-		cidx = max((cidx - 1), 1)
-	end
-	
-	-- up/down: navigate directories
-	if btnp(2) then
-		mode = 1
-		didx = max((didx - 1), 0)
-	end
-	if btnp(3) then
-		mode = 1
-		didx = min((didx + 1), numdirs + 1)
-		-- +1 because: 0=pwd, 1=cd .., 2+ = actual dirs
-	end
+	t += 1
 
-	if btnp(4) then
-		linebuffer = ""
-	end
-	if btnp(5) then
-		linebuffer = ""
-		if mode == 0 then
-			runcmd = true
-		else
-			cdcmd = true
+	if not bbs_mode then
+		-- LOCAL ARCADE LIBRARY MODE
+		if btnp(4) then
+			-- Switch to BBS Store
+			bbs_mode = true
+			classic_refreshlists()
+			bbs_status = ""
+			return
 		end
-	end
-	
-	-- update linebuffer based on mode
-	if mode == 0 then
-		-- cart mode
-		if cidx > 0 and cidx <= numcarts then
-			carttoload = carts[cidx]
-			local lastslashidx = findlastchar(carttoload, "/")
-			local dispstr = carttoload
-			if lastslashidx ~= nil and lastslashidx > 0 then
-				dispstr = sub(dispstr, lastslashidx + 1)
-			end
-			linebuffer = "load " .. dispstr
-		else
-			carttoload = ""
-			if numcarts < 1 then
-				linebuffer = "(no carts in directory)"
-			end
+
+		-- left/right: navigate carts
+		if btnp(1) then
+			mode = 0
+			cidx = min((cidx + 1), numcarts)
 		end
-	else
-		-- dir mode
-		if didx == 0 then
-			if __pwd then
-				linebuffer = "pwd: " .. __pwd()
+		if btnp(0) then
+			mode = 0
+			cidx = max((cidx - 1), 1)
+		end
+
+		-- up/down: navigate directories
+		if btnp(2) then
+			mode = 1
+			didx = max((didx - 1), 0)
+		end
+		if btnp(3) then
+			mode = 1
+			didx = min((didx + 1), numdirs + 1)
+		end
+
+		if btnp(5) then
+			linebuffer = ""
+			if mode == 0 then
+				runcmd = true
 			else
-				linebuffer = "pwd"
-			end
-		elseif didx == 1 then
-			linebuffer = "cd .."
-		else
-			local dirIdx = didx - 1
-			if dirIdx <= numdirs then
-				linebuffer = "cd " .. dirs[dirIdx]
+				cdcmd = true
 			end
 		end
-	end
-	
-	if runcmd then
-		runcmd = false
-		if load and carttoload then
-			load(carttoload)
-		end
-	end
-	
-	if cdcmd then
-		cdcmd = false
-		if didx == 0 then
-			-- pwd: just show, do nothing
-		elseif didx == 1 then
-			-- cd ..
-			if __cd then
-				__cd("..")
-				classic_refreshlists()
+
+		-- update linebuffer based on mode
+		if mode == 0 then
+			if cidx > 0 and cidx <= numcarts then
+				carttoload = carts[cidx]
+				local lastslashidx = findlastchar(carttoload, "/")
+				local dispstr = carttoload
+				if lastslashidx ~= nil and lastslashidx > 0 then
+					dispstr = sub(dispstr, lastslashidx + 1)
+				end
+				linebuffer = "load " .. dispstr
+			else
+				carttoload = ""
+				if numcarts < 1 then
+					linebuffer = "(no carts in directory)"
+				end
 			end
 		else
-			local dirIdx = didx - 1
-			if dirIdx <= numdirs and __cd then
-				__cd(dirs[dirIdx])
-				classic_refreshlists()
+			if didx == 0 then
+				if __pwd then
+					linebuffer = "pwd: " .. __pwd()
+				else
+					linebuffer = "pwd"
+				end
+			elseif didx == 1 then
+				linebuffer = "cd .."
+			else
+				local dirIdx = didx - 1
+				if dirIdx <= numdirs then
+					linebuffer = "cd " .. dirs[dirIdx]
+				end
 			end
 		end
-		mode = 0
-		linebuffer = ""
+
+		if runcmd then
+			runcmd = false
+			if load and carttoload and carttoload ~= "" then
+				load(carttoload)
+			end
+		end
+
+		if cdcmd then
+			cdcmd = false
+			if didx == 0 then
+				-- pwd
+			elseif didx == 1 then
+				if __cd then
+					__cd("..")
+					classic_refreshlists()
+				end
+			else
+				local dirIdx = didx - 1
+				if dirIdx <= numdirs and __cd then
+					__cd(dirs[dirIdx])
+					classic_refreshlists()
+				end
+			end
+			mode = 0
+			linebuffer = ""
+		end
+
+	elseif not bbs_custom_mode then
+		-- BBS STORE BROWSER MODE
+		if btnp(4) then
+			-- Back to local library
+			bbs_mode = false
+			classic_refreshlists()
+			return
+		end
+
+		local total_items = #bbs_items + 1
+
+		if btnp(2) then
+			bbs_idx = max(1, bbs_idx - 1)
+			if bbs_idx <= bbs_scroll then
+				bbs_scroll = bbs_idx - 1
+			end
+		end
+		if btnp(3) then
+			bbs_idx = min(total_items, bbs_idx + 1)
+			if bbs_idx > bbs_scroll + 5 then
+				bbs_scroll = bbs_idx - 5
+			end
+		end
+
+		if btnp(5) then
+			if bbs_idx <= #bbs_items then
+				local item = bbs_items[bbs_idx]
+				if item.downloaded then
+					load(item.file)
+				else
+					bbs_status = "DOWNLOADING..."
+					flip()
+					if __bbs_download then
+						local ok = __bbs_download(item.id, item.file)
+						if ok then
+							item.downloaded = true
+							bbs_status = "READY! PRESS X TO PLAY"
+							if __refreshcarts then __refreshcarts() end
+							classic_refreshlists()
+						else
+							bbs_status = "DOWNLOAD FAILED"
+						end
+					end
+				end
+			else
+				-- Enter custom ID
+				bbs_custom_mode = true
+				bbs_custom_id = "11925"
+				bbs_custom_pos = 1
+				bbs_status = ""
+			end
+		end
+
+	else
+		-- CUSTOM ID ENTRY MODE
+		if btnp(4) then
+			-- Cancel back to store
+			bbs_custom_mode = false
+			bbs_status = ""
+			return
+		end
+
+		-- Left / Right move cursor
+		if btnp(0) then
+			bbs_custom_pos = max(1, bbs_custom_pos - 1)
+		end
+		if btnp(1) then
+			if bbs_custom_pos < #bbs_custom_id then
+				bbs_custom_pos += 1
+			elseif #bbs_custom_id < 24 then
+				bbs_custom_id = bbs_custom_id .. "0"
+				bbs_custom_pos = #bbs_custom_id
+			end
+		end
+
+		-- Up / Down cycle character
+		if btnp(2) then
+			local cur_char = sub(bbs_custom_id, bbs_custom_pos, bbs_custom_pos)
+			local idx = (get_char_idx(cur_char) % #charset) + 1
+			bbs_custom_id = replace_char_at(bbs_custom_id, bbs_custom_pos, sub(charset, idx, idx))
+		end
+		if btnp(3) then
+			local cur_char = sub(bbs_custom_id, bbs_custom_pos, bbs_custom_pos)
+			local idx = get_char_idx(cur_char) - 1
+			if idx < 1 then idx = #charset end
+			bbs_custom_id = replace_char_at(bbs_custom_id, bbs_custom_pos, sub(charset, idx, idx))
+		end
+
+		-- Button 5 (Cross): Download & Run
+		if btnp(5) then
+			bbs_status = "DOWNLOADING..."
+			flip()
+			local target_file = "bbs_" .. bbs_custom_id .. ".p8.png"
+			if __bbs_download then
+				local ok = __bbs_download(bbs_custom_id, target_file)
+				if ok then
+					if __refreshcarts then __refreshcarts() end
+					load(target_file)
+				else
+					bbs_status = "CART NOT FOUND ON BBS"
+				end
+			end
+		end
 	end
-		
 end
 
 function classic_draw()
 	cls()
-	rectfill(0,0,128,128,bgcolor)
-	color(12)
-	print("=== orbis8 arcade ===", 18, 2)
-	color(11)
-	print("by birth1mark", 36, 10)
-	color(5)
-	line(0, 18, 128, 18)
-	color(7)
-	cursor(0, 21)
-	print("dir: " .. currentdirname)
-	color(6)
-	print("x:play   o:back   d-pad:move")
-	color(7)
-	print("⬅️➡️ load carts (" .. numcarts .. " found)")
-	print("⬆️⬇️ cd dirs (" .. numdirs .. " found)")
-	print("🅾️ (" .. selectbtn .. ") to execute")
-	print(exitbtn .. " to exit")
-	print("")
-	-- 18 pixels from cursor() call, then 
-	-- 24 more from 4 print calls
-	linenum=84
+	rectfill(0, 0, 128, 128, bgcolor)
 
+	if not bbs_mode then
+		-- Header
+		color(12)
+		print("=== orbis8 arcade ===", 18, 2)
+		color(11)
+		print("by birth1mark", 36, 10)
+		color(5)
+		line(0, 18, 128, 18)
 
-	rectfill(0, linenum, 128, linenum+5, bgcolor)
-	color(7)
-	print("> "..linebuffer, 0, linenum)
-	if t%30<15 then
-		rectfill((#linebuffer+2)*4, linenum, (#linebuffer+2)*4+3, linenum+4, 8)
+		-- Navigation Tabs
+		rectfill(0, 20, 60, 28, 12)
+		color(7)
+		print("📁 local", 10, 22)
+		rectfill(64, 20, 127, 28, 0)
+		color(6)
+		print("🌐 bbs get", 72, 22)
+
+		-- Info & Controls
+		color(7)
+		print("dir: " .. currentdirname, 0, 32)
+		color(10)
+		print("o: open bbs store (get)", 0, 40)
+		color(6)
+		print("x: play   d-pad: navigate", 0, 48)
+		color(7)
+		print("⬅️➡️ load carts (" .. numcarts .. ")", 0, 56)
+		print("⬆️⬇️ cd dirs (" .. numdirs .. ")", 0, 64)
+		print(exitbtn .. " to exit", 0, 72)
+
+		linenum = 84
+		rectfill(0, linenum, 128, linenum + 5, bgcolor)
+		color(7)
+		print("> " .. linebuffer, 0, linenum)
+		if t % 30 < 15 then
+			rectfill((#linebuffer + 2) * 4, linenum, (#linebuffer + 2) * 4 + 3, linenum + 4, 8)
+		end
+
+	elseif not bbs_custom_mode then
+		-- BBS STORE VIEW
+		color(11)
+		print("=== orbis8 bbs store ===", 10, 2)
+		color(7)
+		print("download community games", 14, 10)
+		color(5)
+		line(0, 18, 128, 18)
+
+		-- Navigation Tabs
+		rectfill(0, 20, 60, 28, 0)
+		color(6)
+		print("📁 local", 10, 22)
+		rectfill(64, 20, 127, 28, 11)
+		color(0)
+		print("🌐 bbs get", 72, 22)
+
+		-- Cartridge List Window
+		local start_y = 31
+		local max_visible = 5
+		local total_items = #bbs_items + 1
+
+		for i = 1, max_visible do
+			local cur = bbs_scroll + i
+			if cur <= #bbs_items then
+				local item = bbs_items[cur]
+				local y = start_y + (i - 1) * 9
+				if cur == bbs_idx then
+					rectfill(0, y - 1, 127, y + 7, 1)
+					color(10)
+					print(">", 1, y)
+					color(7)
+				else
+					color(6)
+				end
+				print(sub(item.title, 1, 14), 8, y)
+
+				if item.downloaded then
+					color(11)
+					print("[play]", 96, y)
+				else
+					color(9)
+					print("[get]", 100, y)
+				end
+			elseif cur == total_items then
+				local y = start_y + (i - 1) * 9
+				if cur == bbs_idx then
+					rectfill(0, y - 1, 127, y + 7, 1)
+					color(10)
+					print(">", 1, y)
+					color(12)
+				else
+					color(5)
+				end
+				print("[+ enter cart id...]", 8, y)
+			end
+		end
+
+		-- Divider
+		color(5)
+		line(0, 78, 128, 78)
+
+		-- Item Details
+		if bbs_idx <= #bbs_items then
+			local item = bbs_items[bbs_idx]
+			color(6)
+			print("by " .. sub(item.author, 1, 12) .. " (" .. item.cat .. ")", 2, 81)
+			if item.downloaded then
+				color(11)
+				print("status: installed (x: play)", 2, 89)
+			else
+				color(9)
+				print("status: online (x: get)", 2, 89)
+			end
+		else
+			color(12)
+			print("download any cart by bbs id", 2, 81)
+			color(6)
+			print("press x to enter id", 2, 89)
+		end
+
+		if bbs_status ~= "" then
+			rectfill(0, 97, 127, 107, 0)
+			color(10)
+			print(bbs_status, 2, 99)
+		end
+
+		-- Footer
+		color(5)
+		line(0, 117, 128, 117)
+		color(7)
+		print("x:select   o:back to arcade", 4, 120)
+
+	else
+		-- CUSTOM ID ENTRY VIEW
+		color(11)
+		print("=== enter cart id ===", 16, 4)
+		color(6)
+		print("from lexaloffle bbs", 22, 13)
+		color(5)
+		line(0, 22, 128, 22)
+
+		color(7)
+		print("cart id / lid:", 10, 32)
+
+		-- Box for ID
+		rectfill(8, 42, 119, 56, 0)
+		rect(8, 42, 119, 56, 6)
+		color(10)
+		print(bbs_custom_id, 14, 46)
+
+		-- Underline active character
+		if t % 30 < 15 then
+			local cx = 14 + (bbs_custom_pos - 1) * 4
+			line(cx, 53, cx + 3, 53, 7)
+		end
+
+		color(6)
+		print("⬆️⬇️: change character", 10, 64)
+		print("⬅️➡️: move cursor / add", 10, 72)
+		color(10)
+		print("x: download & play", 10, 84)
+		color(8)
+		print("o: cancel", 10, 92)
+
+		if bbs_status ~= "" then
+			rectfill(0, 104, 127, 114, 0)
+			color(9)
+			print(bbs_status, 4, 106)
+		end
+
+		color(5)
+		line(0, 118, 128, 118)
+		color(7)
+		print("o: return to bbs store", 12, 121)
 	end
 end
 

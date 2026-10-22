@@ -8,6 +8,7 @@ using namespace std;
 #include "Input.h"
 #include "Audio.h"
 #include "host.h"
+#include "BBSClient.h"
 
 //extern "C" {
   #include <lua.h>
@@ -102,6 +103,12 @@ class Vm {
     bool ChangeDirectory(string dir);
     string GetCurrentDirectory();
     string GetBiosError();
+
+    Host* GetHost() { return _host; }
+    bool DownloadBBSCart(string lid, string filename);
+    bool IsBBSCartDownloaded(string filename);
+    vector<BBSCartItem> GetBBSFeaturedCarts();
+    void RefreshCartList();
 
     bool ExecuteLua(string luaString, string callbackFunction);
 

@@ -98,6 +98,12 @@ int listcarts(lua_State *L);
 int listdirs(lua_State *L);
 int cd(lua_State *L);
 int pwd(lua_State *L);
+int refreshcarts(lua_State *L);
+
+// bbs functions
+int bbs_listfeatured(lua_State *L);
+int bbs_download(lua_State *L);
+int bbs_isdownloaded(lua_State *L);
 
 int getbioserror(lua_State *L);
 int loaddefaultcart(lua_State *L);

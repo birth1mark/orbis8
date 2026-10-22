@@ -206,6 +206,13 @@ Cartridges on the Lexaloffle BBS are stored deterministically on the public CDN 
 3. Caches directly to `/data/orbis8/carts/{lid}.p8.png` (PS4) or `~/p8carts/` (PC).
 4. Reloads the cart list and hot-launches the game into memory.
 
+### Lua Host API Bindings
+Orbis8 exposes dedicated secure C++ bindings to the Arcade BIOS Lua environment:
+- `__bbs_listfeatured()`: Returns an indexed table of curated community games (`{id, title, author, cat, file, downloaded}`).
+- `__bbs_download(lid, filename)`: Downloads a cartridge via `libcurl`, verifies PNG magic bytes, and saves locally.
+- `__bbs_isdownloaded(filename)`: Returns whether the given cartridge is already present on local storage.
+- `__refreshcarts()`: Re-scans internal storage and USB mounts for newly acquired games.
+
 ---
 
 ## 🏗️ Build Targets & Toolchain Pipeline

@@ -1424,6 +1424,71 @@ int pwd(lua_State *L) {
     return 1;
 }
 
+int refreshcarts(lua_State *L) {
+    _vmForLuaApi->RefreshCartList();
+    return 0;
+}
+
+int bbs_listfeatured(lua_State *L) {
+    vector<BBSCartItem> carts = _vmForLuaApi->GetBBSFeaturedCarts();
+    lua_createtable(L, (int)carts.size(), 0);
+    int top = lua_gettop(L);
+
+    for (size_t i = 0; i < carts.size(); i++) {
+        lua_createtable(L, 0, 7);
+
+        lua_pushstring(L, carts[i].id.c_str());
+        lua_setfield(L, -2, "id");
+
+        lua_pushstring(L, carts[i].title.c_str());
+        lua_setfield(L, -2, "title");
+
+        lua_pushstring(L, carts[i].author.c_str());
+        lua_setfield(L, -2, "author");
+
+        lua_pushstring(L, carts[i].category.c_str());
+        lua_setfield(L, -2, "cat");
+
+        lua_pushstring(L, carts[i].filename.c_str());
+        lua_setfield(L, -2, "file");
+
+        lua_pushstring(L, carts[i].url.c_str());
+        lua_setfield(L, -2, "url");
+
+        lua_pushboolean(L, carts[i].downloaded);
+        lua_setfield(L, -2, "downloaded");
+
+        lua_rawseti(L, top, (int)i + 1);
+    }
+
+    return 1;
+}
+
+int bbs_download(lua_State *L) {
+    int argC = lua_gettop(L);
+    if (argC >= 2 && lua_isstring(L, 1) && lua_isstring(L, 2)) {
+        string lid = lua_tostring(L, 1);
+        string filename = lua_tostring(L, 2);
+        bool res = _vmForLuaApi->DownloadBBSCart(lid, filename);
+        lua_pushboolean(L, res);
+        return 1;
+    }
+    lua_pushboolean(L, false);
+    return 1;
+}
+
+int bbs_isdownloaded(lua_State *L) {
+    int argC = lua_gettop(L);
+    if (argC >= 1 && lua_isstring(L, 1)) {
+        string filename = lua_tostring(L, 1);
+        bool res = _vmForLuaApi->IsBBSCartDownloaded(filename);
+        lua_pushboolean(L, res);
+        return 1;
+    }
+    lua_pushboolean(L, false);
+    return 1;
+}
+
 
 
 int getbioserror(lua_State *L) {

@@ -113,6 +113,7 @@ class Host {
 
     void changeStretch();
     void forceStretch(StretchOption newStretch);
+    void onWindowResized(int newWidth, int newHeight);
     
     void waitForTargetFps();
 

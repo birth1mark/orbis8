@@ -117,16 +117,19 @@ void _changeStretch(StretchOption newStretch){
         _screenHeight = PicoScreenHeight;
     }
     else if (newStretch == StretchToFit) {
-        _screenWidth = _windowHeight;
-        _screenHeight = _windowHeight;
+        int fitDim = std::min(_windowWidth, _windowHeight);
+        _screenWidth = fitDim;
+        _screenHeight = fitDim;
     }
     else if (newStretch == StretchToFill){
         _screenWidth = _windowWidth;
         _screenHeight = _windowHeight; 
     }
     else if (newStretch == PixelPerfectStretch) {
-        _screenWidth = _maxNoStretchWidth;
-        _screenHeight = _maxNoStretchHeight; 
+        int factor = std::min(_windowWidth / PicoScreenWidth, _windowHeight / PicoScreenHeight);
+        if (factor < 1) factor = 1;
+        _screenWidth = factor * PicoScreenWidth;
+        _screenHeight = factor * PicoScreenHeight; 
     }
     else if (newStretch == FourByThreeVertPerfect) {
         _screenWidth = _maxNoStretchHeight * 4 / 3;
@@ -138,8 +141,8 @@ void _changeStretch(StretchOption newStretch){
     }
     
 
-    DestR.x = _windowWidth / 2 - _screenWidth / 2;
-    DestR.y = _windowHeight / 2 - _screenHeight / 2;
+    DestR.x = (_windowWidth - _screenWidth) / 2;
+    DestR.y = (_windowHeight - _screenHeight) / 2;
     DestR.w = _screenWidth;
     DestR.h = _screenHeight;
 
@@ -300,6 +303,26 @@ void Host::forceStretch(StretchOption newStretch) {
 	scaleY = _screenHeight / (float)PicoScreenHeight;
 	mouseOffsetX = DestR.x;
 	mouseOffsetY = DestR.y;
+}
+
+void Host::onWindowResized(int newWidth, int newHeight) {
+    if (newWidth <= 0 || newHeight <= 0) return;
+
+    _windowWidth = newWidth;
+    _windowHeight = newHeight;
+
+    int factor = std::min(_windowWidth / PicoScreenWidth, _windowHeight / PicoScreenHeight);
+    if (factor < 1) factor = 1;
+
+    _maxNoStretchWidth = factor * PicoScreenWidth;
+    _maxNoStretchHeight = factor * PicoScreenHeight;
+
+    _changeStretch(stretch);
+
+    scaleX = _screenWidth / (float)PicoScreenWidth;
+    scaleY = _screenHeight / (float)PicoScreenHeight;
+    mouseOffsetX = DestR.x;
+    mouseOffsetY = DestR.y;
 }
 
 bool Host::shouldQuit() {

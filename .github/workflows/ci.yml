@@ -1,0 +1,76 @@
+name: Orbis8 CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  desktop-build:
+    name: Desktop Build (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev
+
+      - name: Compile Desktop
+        run: make desktop
+
+      - name: Upload Desktop Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbis8-desktop-linux-x86_64
+          path: platform/SDL2Desktop/FAKE08
+
+  ps4-build:
+    name: PlayStation 4 Build & Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Toolchain Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld imagemagick python3
+
+      - name: Download & Setup OpenOrbis PS4 Toolchain
+        run: |
+          mkdir -p $HOME/toolchains
+          curl -L -o /tmp/openorbis.tar.gz "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
+          tar -xzf /tmp/openorbis.tar.gz -C $HOME/toolchains/
+          rm -f /tmp/openorbis.tar.gz
+
+      - name: Setup OpenSSL 1.1 for PkgTool.Core
+        run: |
+          mkdir -p $HOME/toolchains/lib
+          curl -L -o /tmp/libssl.deb "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb"
+          cd /tmp && ar x libssl.deb && tar -xf data.tar.*
+          cp /tmp/usr/lib/x86_64-linux-gnu/lib* $HOME/toolchains/lib/
+          rm -rf /tmp/libssl* /tmp/usr /tmp/data.tar.* /tmp/control.tar.*
+
+      - name: Build PS4 eboot.bin & orbis8.pkg
+        run: |
+          export OPENORBIS="$HOME/toolchains/OpenOrbis/PS4Toolchain"
+          export OO_PS4_TOOLCHAIN="$OPENORBIS"
+          make ps4
+          make pkg
+
+      - name: Upload PS4 Package Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbis8-ps4-pkg
+          path: |
+            orbis8.pkg
+            pkg/eboot.bin

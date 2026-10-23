@@ -1,12 +1,23 @@
 # Orbis8 🎮
 **A native PICO-8 Fantasy Console Player for PlayStation 4**
 
+[![Release](https://img.shields.io/github/v/release/birth1mark/orbis8?label=Latest%20PKG%20Release&color=ff004d)](https://github.com/birth1mark/orbis8/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-PlayStation%204-003791.svg)](https://github.com/OpenOrbis)
 [![SDK](https://img.shields.io/badge/SDK-OpenOrbis%20Toolchain-blue.svg)](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.MD)
-[![Firmware](https://img.shields.io/badge/PS4%20Firmware-5.05%20--%2011.00-brightgreen.svg)](#)
+[![Firmware](https://img.shields.io/badge/PS4%20Firmware-5.05%20--%2011.00-brightgreen.svg)](https://github.com/birth1mark/orbis8/releases)
 
 **Orbis8** brings the magical world of PICO-8 indie retrogaming natively to the PlayStation 4. Powered by an optimized C++ SDL2 engine, it delivers pixel-perfect 60 FPS gameplay, full DualShock 4 controller integration, an in-app BBS Store to download cartridges on-the-fly, and an out-of-the-box arcade experience with celebrated community titles like *Celeste Classic*.
+
+---
+
+## 📸 Screenshots
+
+| 🕹️ **Orbis-8 Arcade Carousel** | 🌐 **In-App Lexaloffle BBS Store** |
+| :---: | :---: |
+| ![Orbis-8 Arcade Carousel](docs/screenshots/arcade-menu.png) | ![In-App BBS Store](docs/screenshots/bbs-store.png) |
+| ⚡ **1-Click Download & Launch** | 🍓 **Pixel-Perfect 60 FPS Gameplay** |
+| ![1-Click BBS Download](docs/screenshots/bbs-download.png) | ![Celeste Classic Gameplay](docs/screenshots/gameplay-celeste.png) |
 
 ---
 

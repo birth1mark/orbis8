@@ -6,7 +6,27 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.MD)
 [![Firmware](https://img.shields.io/badge/PS4%20Firmware-5.05%20--%2011.00-brightgreen.svg)](#)
 
-**Orbis8** brings the magical world of PICO-8 indie retrogaming natively to the PlayStation 4. Powered by an optimized C++ SDL2 engine, it delivers pixel-perfect 60 FPS gameplay, full DualShock 4 controller integration, and an out-of-the-box arcade experience with celebrated community titles like *Celeste Classic*.
+**Orbis8** brings the magical world of PICO-8 indie retrogaming natively to the PlayStation 4. Powered by an optimized C++ SDL2 engine, it delivers pixel-perfect 60 FPS gameplay, full DualShock 4 controller integration, an in-app BBS Store to download cartridges on-the-fly, and an out-of-the-box arcade experience with celebrated community titles like *Celeste Classic*.
+
+---
+
+## 🚀 Quick Install (PlayStation 4 PKG)
+
+Pre-built packages are ready to install on any jailbroken PlayStation 4 running firmware **5.05 up to 11.00+** (GoldHEN / Mira / HEN):
+
+### 📥 1. Download the PKG
+* **Pre-built Releases:** Download the latest `orbis8.pkg` directly from the [**GitHub Releases**](https://github.com/birth1mark/orbis8/releases) page.
+* **Or Build It Locally:** Run `make pkg` to generate `orbis8.pkg` in the project root in seconds.
+
+### 🕹️ 2. Step-by-Step PS4 Installation
+1. Format a USB flash drive as **exFAT** or **FAT32**.
+2. Copy `orbis8.pkg` directly to the root of your USB drive (e.g. `X:\orbis8.pkg`).
+3. Insert the USB drive into your PS4.
+4. On your PS4 (with **GoldHEN** or **HEN** enabled), navigate to:
+   * **Settings** ➔ **GoldHEN** ➔ **Package Installer**
+   *(or **Settings** ➔ **Debug Settings** ➔ **Game** ➔ **Package Installer**)*
+5. Select `orbis8.pkg` and press **Cross (✕)** to install.
+6. Launch **Orbis8** from the PS4 Home Screen (XMB) and start playing!
 
 ---
 
@@ -60,40 +80,30 @@ You can easily add new PICO-8 cartridges using any of the following methods:
 
 ## 🛠️ Building from Source
 
-Orbis8 features a dual-target build system: test locally on your PC/Linux environment in seconds, or cross-compile for PS4.
+Orbis8 features an automated dual-target build system: test locally on your PC/Linux desktop in seconds, or cross-compile and package for PS4 with a single command.
 
 ### 1. Local Desktop Build (Linux / EndeavourOS)
-Requires `g++` and `SDL2`:
+Requires `g++`, `SDL2`, and `libcurl`:
 ```bash
-# Compile and run on your desktop for quick testing
-make sdl2
+# Compile and run on your desktop
+make desktop
 ./platform/SDL2Desktop/FAKE08
 ```
 
-### 2. PS4 Cross-Compilation (OpenOrbis Toolchain)
+### 2. PS4 Executable (`eboot.bin`)
 Requires the [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) installed:
 ```bash
-export OPENORBIS=/opt/OpenOrbis/PS4-Toolchain
-cd platform/ps4
-make
+# Cross-compiles C++ sources, links FreeBSD 12 ELF, and signs eboot.bin
+make ps4
 ```
-This generates `eboot.bin` ready to be packed into a Fake PKG (`.pkg`) using `orbis-pub-cmd` or `pkg-builder`.
+Generates `platform/ps4/eboot.bin` and stages it in `pkg/eboot.bin`.
 
----
-
-## 📦 Packaging (`.pkg`)
-
-The package structure is fully configured in `pkg/`:
-- `pkg/sce_sys/param.sfo`: Configured Title ID `ORBS00008` (App Category: `gd`).
-- `pkg/carts/`: Pre-loaded starter cartridges.
-- `pkg/eboot.bin`: Built executable.
-
-To create the final package:
+### 3. PS4 Fake PKG (`orbis8.pkg`)
+Builds the complete installable Fake PKG image with starter games and assets in one step:
 ```bash
-python3 tools/make_sfo.py pkg/sce_sys/param.sfo
-# Use orbis-pub-cmd or pkg-builder
-orbis-pub-cmd img_create pkg/project.gp4 Orbis8_v1.00.pkg
+make pkg
 ```
+This automatically compiles the code, creates `eboot.bin`, synthesizes `param.sfo` and `icon0.png`, bundles starter carts, signs PlayGo digests, and seals `orbis8.pkg` in the project root.
 
 ---
 

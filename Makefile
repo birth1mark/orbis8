@@ -15,7 +15,7 @@ export APP_VERSION	= v$(V_MAJOR).$(V_MINOR).$(V_PATCH).$(V_BUILD)
 export SOURCES   = ../../source ../../libs/z8lua ../../libs/utf8-util ../../libs/lodepng ../../libs/simpleini ../../libs/miniz 
 export INCLUDES  = ../../include ../../libs/z8lua ../../libs/utf8-util ../../libs/lodepng ../../libs/simpleini ../../libs/miniz
 
-.PHONY: all 3ds switch wiiu vita ps4 sdl2 desktop clean clean-3ds clean-switch clean-wiiu clean-vita clean-ps4 clean-sdl2
+.PHONY: all 3ds switch wiiu vita ps4 pkg sdl2 desktop clean clean-3ds clean-switch clean-wiiu clean-vita clean-ps4 clean-sdl2
 
 all: ps4 desktop
 
@@ -23,6 +23,9 @@ desktop: sdl2
 
 ps4:
 	@$(MAKE) -C platform/ps4
+
+pkg:
+	@$(MAKE) -C platform/ps4 pkg
 
 clean-ps4:
 	@$(MAKE) -C platform/ps4 clean

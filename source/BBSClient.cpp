@@ -8,7 +8,14 @@
 #include <sys/stat.h>
 #include <cctype>
 
+#if defined(__ORBIS__) || defined(__PS4__)
+#include <orbis/Http.h>
+#include <orbis/Ssl.h>
+#include <orbis/Net.h>
+#include <orbis/Sysmodule.h>
+#else
 #include <curl/curl.h>
+#endif
 
 #include <iostream>
 #include <fstream>
@@ -16,10 +23,106 @@
 
 using namespace std;
 
+#if !defined(__ORBIS__) && !defined(__PS4__)
 static size_t write_file_callback(void *ptr, size_t size, size_t nmemb, void *stream) {
     FILE* file = (FILE*)stream;
     return fwrite(ptr, size, nmemb, file);
 }
+#else
+static int s_libnetMemId = 0, s_libhttpCtxId = 0, s_libsslCtxId = 0;
+
+static int skipSslCallback(int libsslId, unsigned int verifyErr, void * const sslCert[], int certNum, void *userArg) {
+    return 1;
+}
+
+static bool ps4_http_init() {
+    if (s_libnetMemId != 0 && s_libhttpCtxId != 0) return true;
+
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET);
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP);
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL);
+
+    sceNetInit();
+    s_libnetMemId = sceNetPoolCreate("netPool", 4 * 1024, 0);
+    if (s_libnetMemId < 0) return false;
+
+    s_libsslCtxId = sceSslInit(SSL_POOLSIZE);
+    if (s_libsslCtxId < 0) return false;
+
+    s_libhttpCtxId = sceHttpInit(s_libnetMemId, s_libsslCtxId, LIBHTTP_POOLSIZE);
+    if (s_libhttpCtxId < 0) return false;
+
+    return true;
+}
+
+static bool ps4_http_download(const char* url, const char* destPath) {
+    if (!ps4_http_init()) return false;
+
+    int tpl = sceHttpCreateTemplate(s_libhttpCtxId, "Mozilla/5.0 (PLAYSTATION 4; Orbis8)", ORBIS_HTTP_VERSION_1_1, 1);
+    if (tpl < 0) return false;
+
+    sceHttpsSetSslCallback(tpl, skipSslCallback, NULL);
+
+    int conn = sceHttpCreateConnectionWithURL(tpl, url, 1);
+    if (conn < 0) {
+        sceHttpDeleteTemplate(tpl);
+        return false;
+    }
+
+    int req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_GET, url, 0);
+    if (req < 0) {
+        sceHttpDeleteConnection(conn);
+        sceHttpDeleteTemplate(tpl);
+        return false;
+    }
+
+    int ret = sceHttpSendRequest(req, NULL, 0);
+    if (ret < 0) {
+        sceHttpDeleteRequest(req);
+        sceHttpDeleteConnection(conn);
+        sceHttpDeleteTemplate(tpl);
+        return false;
+    }
+
+    int32_t statusCode = 0;
+    sceHttpGetStatusCode(req, &statusCode);
+    if (statusCode != 200) {
+        sceHttpDeleteRequest(req);
+        sceHttpDeleteConnection(conn);
+        sceHttpDeleteTemplate(tpl);
+        return false;
+    }
+
+    FILE* fp = fopen(destPath, "wb");
+    if (!fp) {
+        sceHttpDeleteRequest(req);
+        sceHttpDeleteConnection(conn);
+        sceHttpDeleteTemplate(tpl);
+        return false;
+    }
+
+    uint8_t buf[16 * 1024];
+    bool ok = true;
+    while (1) {
+        int readBytes = sceHttpReadData(req, buf, sizeof(buf));
+        if (readBytes < 0) {
+            ok = false;
+            break;
+        }
+        if (readBytes == 0) break;
+        if (fwrite(buf, 1, readBytes, fp) != (size_t)readBytes) {
+            ok = false;
+            break;
+        }
+    }
+
+    fclose(fp);
+    sceHttpDeleteRequest(req);
+    sceHttpDeleteConnection(conn);
+    sceHttpDeleteTemplate(tpl);
+    return ok;
+}
+#endif
 
 string BBSClient::CleanLid(const string& rawLid) {
     string cleaned = rawLid;
@@ -70,6 +173,14 @@ string BBSClient::GetCartUrlFromLid(const string& rawLid) {
 bool BBSClient::DownloadCart(const string& url, const string& destinationPath) {
     Logger_Write("BBSClient: Downloading %s to %s\n", url.c_str(), destinationPath.c_str());
 
+#if defined(__ORBIS__) || defined(__PS4__)
+    bool success = ps4_http_download(url.c_str(), destinationPath.c_str());
+    if (!success) {
+        Logger_Write("BBSClient: PS4 HTTP download failed\n");
+        unlink(destinationPath.c_str());
+        return false;
+    }
+#else
     CURL* curl = curl_easy_init();
     if (!curl) {
         Logger_Write("BBSClient: curl_easy_init() failed\n");
@@ -104,6 +215,7 @@ bool BBSClient::DownloadCart(const string& url, const string& destinationPath) {
         unlink(destinationPath.c_str()); // delete incomplete file
         return false;
     }
+#endif
 
     // Verify file format header: must be PNG (\x89PNG) or text (.p8 header)
     FILE* checkFp = fopen(destinationPath.c_str(), "rb");

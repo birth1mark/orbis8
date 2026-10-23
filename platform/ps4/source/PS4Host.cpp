@@ -57,9 +57,9 @@ static SDL_GameController* controller = NULL;
 
 static string _ps4SettingsDir = "/data/orbis8";
 static string _ps4SettingsPrefix = "/data/orbis8/";
-static string _ps4CartDir = "/app0/carts";
+static string _ps4CartDir = "/data/orbis8/carts";
 static string _ps4CustomBiosLua = 
-    "cartpath = \"/app0/carts/\"\n"
+    "cartpath = \"/data/orbis8/carts/\"\n"
     "selectbtn = \"x\"\n"
     "pausebtn = \"options\"";
 
@@ -226,7 +226,7 @@ vector<string> Host::listcarts() {
     DIR *dir;
     struct dirent *ent;
 
-    // Scan primary cart directory (/app0/carts or USB)
+    // Scan primary cart directory (/data/orbis8/carts or USB)
     if ((dir = opendir(_cartDirectory.c_str())) != NULL) {
         while ((ent = readdir(dir)) != NULL) {
             if (ent->d_name[0] == '.') continue;
@@ -237,15 +237,29 @@ vector<string> Host::listcarts() {
         closedir(dir);
     }
 
-    // Also scan USB /mnt/usb0/pico8 if not already scanned
-    if (_cartDirectory != "/mnt/usb0/pico8" && (dir = opendir("/mnt/usb0/pico8")) != NULL) {
+    // Also scan bundled application carts (/app0/carts)
+    if (_cartDirectory != "/app0/carts" && (dir = opendir("/app0/carts")) != NULL) {
         while ((ent = readdir(dir)) != NULL) {
             if (ent->d_name[0] == '.') continue;
             if (isCartFile(ent->d_name)) {
-                carts.push_back(string("/mnt/usb0/pico8/") + ent->d_name);
+                carts.push_back(string("/app0/carts/") + ent->d_name);
             }
         }
         closedir(dir);
+    }
+
+    // Also scan USB storage if not already scanned
+    const char* usbPaths[] = { "/mnt/usb0/pico8", "/mnt/usb1/pico8" };
+    for (const char* usbPath : usbPaths) {
+        if (_cartDirectory != usbPath && (dir = opendir(usbPath)) != NULL) {
+            while ((ent = readdir(dir)) != NULL) {
+                if (ent->d_name[0] == '.') continue;
+                if (isCartFile(ent->d_name)) {
+                    carts.push_back(string(usbPath) + "/" + ent->d_name);
+                }
+            }
+            closedir(dir);
+        }
     }
 
     return carts;

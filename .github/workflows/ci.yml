@@ -56,9 +56,9 @@ jobs:
         run: |
           mkdir -p $HOME/toolchains/lib
           curl -L -o /tmp/libssl.deb "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb"
-          cd /tmp && ar x libssl.deb && tar -xf data.tar.*
-          cp /tmp/usr/lib/x86_64-linux-gnu/lib* $HOME/toolchains/lib/
-          rm -rf /tmp/libssl* /tmp/usr /tmp/data.tar.* /tmp/control.tar.*
+          dpkg -x /tmp/libssl.deb /tmp/libssl_extracted
+          cp -d /tmp/libssl_extracted/usr/lib/x86_64-linux-gnu/lib* $HOME/toolchains/lib/
+          rm -rf /tmp/libssl.deb /tmp/libssl_extracted
 
       - name: Build PS4 eboot.bin & orbis8.pkg
         run: |

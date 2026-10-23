@@ -60,6 +60,7 @@ pkg/eboot.bin
 
 # Desktop build artifacts
 platform/SDL2Desktop/build/
+orbis8-*.tar.gz
 
 .DS_Store
 
